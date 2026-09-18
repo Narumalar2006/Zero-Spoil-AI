@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Harvest Room — Zero-Waste Grocery Orchestrator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div>
+    <h1>Harvest Room</h1>
+    <div class="tag">Agentic decision support for perishable demand &amp; shelf-life — live Flask API + SQLite backend, real demand/freshness agents, planner review loop.</div>
+  </div>
+  <div class="clock">
+    <div class="day" id="clockDay">—</div>
+    <div id="clockTime" class="mono">—</div>
+  </div>
+</header>
+
+<main>
+
+  <div class="controlbar">
+    <div class="filters">
+      <select id="fStore"><option value="all">All stores</option></select>
+      <select id="fCategory"><option value="all">All categories</option></select>
+      <select id="fAction">
+        <option value="all">All actions</option>
+        <option value="transfer">Transfer</option>
+        <option value="markdown">Markdown</option>
+        <option value="replenish">Replenish</option>
+        <option value="hold">Hold</option>
+      </select>
+      <select id="fStatus">
+        <option value="all">All statuses</option>
+        <option value="pending">Pending review</option>
+        <option value="approved">Approved</option>
+        <option value="rejected">Rejected</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:8px;">
+      <button class="btn ghost themebtn" id="themeToggle">Dark mode</button>
+      <button class="btn primary" id="resim">Run new simulation cycle</button>
+    </div>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="head">
+        <div>
+          <h2>Planner ledger</h2>
+          <div class="sub">One orchestrated recommendation per SKU / store, served live from the API. Click a row for agent evidence.</div>
+        </div>
+        <div class="sub" id="pendingCount"></div>
+      </div>
+      <div style="overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>SKU / store</th>
+              <th>Action</th>
+              <th>Timing</th>
+              <th>Qty / level</th>
+              <th>Confidence</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ledgerBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div class="head">
+        <div>
+          <h2>System log</h2>
+          <div class="sub">Simulated POS · WMS · ERP feed</div>
+        </div>
+      </div>
+      <div class="log-list" id="sysLog"></div>
+      <div class="decision-log">
+        <div class="head"><h2 style="font-size:14px;">Decision log</h2></div>
+        <div class="log-list" id="decisionLog" style="max-height:220px;"></div>
+      </div>
+    </aside>
+  </div>
+
+  <section class="evalsec">
+    <h2 style="font-size:19px;">Evaluation — orchestrated POC vs. rule-based baseline</h2>
+    <p class="sub" style="color:var(--muted); font-size:13px; margin-top:6px; max-width:760px;">
+      The baseline reorders only when stock is below a flat 20% buffer, marks down flatly once a batch has ≤2 days left, and never moves stock between stores. Both are computed server-side from the same simulated dataset for this cycle.
+    </p>
+    <div class="evalgrid" id="evalGrid"></div>
+  </section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

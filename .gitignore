@@ -1,0 +1,45 @@
+# Python virtual environment
+venv/
+backend/venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# IDE / editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Large datasets / archives
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+
+# TensorFlow / ML generated files
+*.h5
+*.keras
+*.pb
+*.ckpt
+checkpoints/
+models/
+logs/
+
+# Generated / temporary data
+data/processed/
+*.log
+*.tmp
+
+# Large raw freshness image dataset
+data/raw/freshness/Processed Data/

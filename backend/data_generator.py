@@ -57,9 +57,10 @@ def generate_cycle(conn, cycle_id, rng: random.Random):
     """Populate sales_history (30 days), inventory_batches, waste_log,
     and promotions for one simulation cycle. Returns nothing; writes to DB."""
 
-    # clear cycle-scoped tables (sales history accumulates; batches/waste/promo are per-cycle snapshot)
+    # clear cycle-scoped tables. Sales history, promotions, and batches are isolated per cycle.
     conn.execute("DELETE FROM inventory_batches WHERE cycle_id != ?", (cycle_id,))
     conn.execute("DELETE FROM promotions")
+    conn.execute("DELETE FROM sales_history")
 
     today = datetime.utcnow().date()
 

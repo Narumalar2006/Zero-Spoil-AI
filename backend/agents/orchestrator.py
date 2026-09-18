@@ -452,120 +452,99 @@ class Orchestrator:
             "hold": 0,
         }
 
+        # Track mutable inventory risks across stores and SKUs.
+        waste_map = {
+            (r["sku_id"], r["store_id"]): max(0, r["waste_units"])
+            for r in rows
+        }
+        stockout_map = {
+            (r["sku_id"], r["store_id"]): max(0, r["unmet_units"])
+            for r in rows
+        }
+
+        # Store lookup helpers to identify destination stores for transfers.
+        stores = self.conn.execute("SELECT id, name FROM stores").fetchall()
+        store_name_to_id = {s["name"]: s["id"] for s in stores}
+
+        # SKU margin lookup helper.
+        skus = self.conn.execute("SELECT id, unit_price, unit_cost FROM skus").fetchall()
+        sku_margins = {s["id"]: s["unit_price"] - s["unit_cost"] for s in skus}
+
+        # --- PHASE 1: TRANSFERS ---
+        # Transfers are processed first so surplus inventory from source stores
+        # satisfies destination store unmet demand before local actions take effect.
         for r in rows:
+            if r["action"] != "transfer":
+                continue
 
-            action = r["action"]
+            sku_id = r["sku_id"]
+            src_store_id = r["store_id"]
+            src_key = (sku_id, src_store_id)
+            qty = max(0, r["qty"])
+            waste = waste_map.get(src_key, 0)
 
-            waste = max(
-                0,
-                r["waste_units"],
-            )
+            # Identify the destination store
+            dest_store_id = None
+            if " -> " in r.get("level", ""):
+                target_name = r["level"].split(" -> ")[-1].strip()
+                dest_store_id = store_name_to_id.get(target_name)
 
-            stockout = max(
-                0,
-                r["unmet_units"],
-            )
+            if not dest_store_id:
+                # Fallback: check effect text or evidence JSON
+                effect_text = r.get("effect", "")
+                evidence_text = r.get("evidence_json", "")
+                for name, s_id in store_name_to_id.items():
+                    if s_id != src_store_id and (name in effect_text or name in evidence_text):
+                        dest_store_id = s_id
+                        break
 
-            qty = max(
-                0,
-                r["qty"],
-            )
+            if not dest_store_id:
+                # Fallback: sibling store with unmet demand for this SKU
+                candidates = [
+                    cand for cand in rows
+                    if cand["sku_id"] == sku_id and cand["store_id"] != src_store_id and cand["unmet_units"] > 0
+                ]
+                if candidates:
+                    candidates.sort(key=lambda s: -s["unmet_units"])
+                    dest_store_id = candidates[0]["store_id"]
 
-            # -----------------------------------------------------
-            # TRANSFER
-            # -----------------------------------------------------
-            if action == "transfer":
+            dest_key = (sku_id, dest_store_id) if dest_store_id else None
+            dest_unmet = stockout_map.get(dest_key, 0) if dest_key else 0
 
-                transferred = min(
-                    qty,
-                    waste,
-                    stockout,
-                )
+            transferred = min(qty, waste, dest_unmet)
 
-                remaining_waste = max(
-                    0,
-                    waste - transferred,
-                )
-
-                remaining_stockout = max(
-                    0,
-                    stockout - transferred,
-                )
-
-                poc_waste += remaining_waste
-                poc_stockout += remaining_stockout
-
-                sku = self.conn.execute(
-                    """
-                    SELECT unit_price, unit_cost
-                    FROM skus
-                    WHERE id=?
-                    """,
-                    (r["sku_id"],),
-                ).fetchone()
-
-                if sku:
-                    unit_margin = (
-                        sku["unit_price"]
-                        - sku["unit_cost"]
-                    )
-
-                    margin_protected += (
-                        transferred
-                        * unit_margin
-                    )
-
+            if transferred > 0:
+                waste_map[src_key] = max(0, waste_map[src_key] - transferred)
+                stockout_map[dest_key] = max(0, stockout_map[dest_key] - transferred)
+                margin_protected += transferred * sku_margins.get(sku_id, 0)
                 action_effects["transfer"] += transferred
 
-            # -----------------------------------------------------
-            # MARKDOWN
-            # -----------------------------------------------------
+        # --- PHASE 2: LOCAL ACTIONS (MARKDOWN, REPLENISH, HOLD) ---
+        for r in rows:
+            action = r["action"]
+            key = (r["sku_id"], r["store_id"])
+            qty = max(0, r["qty"])
+
+            if action == "transfer":
+                continue
+
             elif action == "markdown":
-
-                markdown_qty = min(
-                    qty,
-                    waste,
-                )
-
-                remaining_waste = max(
-                    0,
-                    waste - markdown_qty,
-                )
-
-                poc_waste += remaining_waste
-                poc_stockout += stockout
-
+                curr_waste = waste_map.get(key, 0)
+                markdown_qty = min(qty, curr_waste)
+                waste_map[key] = max(0, curr_waste - markdown_qty)
                 action_effects["markdown"] += markdown_qty
 
-            # -----------------------------------------------------
-            # REPLENISHMENT
-            # -----------------------------------------------------
             elif action == "replenish":
-
-                replenished = min(
-                    qty,
-                    stockout,
-                )
-
-                remaining_stockout = max(
-                    0,
-                    stockout - replenished,
-                )
-
-                poc_waste += waste
-                poc_stockout += remaining_stockout
-
+                curr_stockout = stockout_map.get(key, 0)
+                replenished = min(qty, curr_stockout)
+                stockout_map[key] = max(0, curr_stockout - replenished)
                 action_effects["replenish"] += replenished
 
-            # -----------------------------------------------------
-            # HOLD / OTHER
-            # -----------------------------------------------------
             else:
-
-                poc_waste += waste
-                poc_stockout += stockout
-
                 action_effects["hold"] += 1
+
+        poc_waste = sum(waste_map.values())
+        poc_stockout = sum(stockout_map.values())
 
         # ---------------------------------------------------------
         # 3. IMPACT METRICS
